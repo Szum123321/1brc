@@ -141,7 +141,9 @@ public class CalculateAverage_Szum123321 {
         try (var channel = FileChannel.open(Path.of(FILE), StandardOpenOption.READ)) {
             long fileSize = channel.size();
             // Add 512 padding bytes to allow out of bounds reads with Vectors
-            var mapping = channel.map(FileChannel.MapMode.READ_ONLY, 0, fileSize, Arena.global());
+            var mapping = channel.map(FileChannel.MapMode.READ_ONLY, 0, fileSize, Arena.global()).reinterpret(fileSize + 1024);
+
+            INPUT_FILE_MAPPING_BASE_ADDRESS = mapping.address();
 
             System.err.println("File ready");
 
@@ -166,7 +168,6 @@ public class CalculateAverage_Szum123321 {
             // Copy the addresses
             int cnt = 0;
             for (long i = 0; i < HASH_TABLE_SIZE; i += HASH_TABLE_ENTRY_LENGTH) {
-                // long key = HASH_TABLE.get(ValueLayout.JAVA_LONG, i);
                 long key = unsafe.getLong(HASH_TABLE.address() + i);
                 if (key != 0)
                     SORTING_POINTER_TABLE[cnt++] = i;
@@ -179,11 +180,9 @@ public class CalculateAverage_Szum123321 {
 
                 for (int j = 0; j < cnt; j++) {
                     // Get the pointer to the string
-                    // long string_ptr = HASH_TABLE.get(ValueLayout.JAVA_LONG, SORTING_POINTER_TABLE[j]);//unsafe.getLong(HASH_TABLE.address() + SORTING_POINTER_TABLE[j]);
                     long string_ptr = unsafe.getLong(HASH_TABLE.address() + SORTING_POINTER_TABLE[j]);
                     // Get the i-th character of the string
 
-                    // int bt = Byte.toUnsignedInt(STATIC_STRING_STORAGE.get(ValueLayout.JAVA_BYTE, string_ptr + i));
                     int bt = Byte.toUnsignedInt(unsafe.getByte(STATIC_STRING_STORAGE_BACKING, Unsafe.ARRAY_BYTE_BASE_OFFSET + string_ptr + i));
                     // Push the hash table entry pointer to the accumulation array
                     SORTING_SORT_ACC_TABLE[STRING_BLOCK_COUNT * bt + STRING_SORT_COUNT_ARRAY[bt]++] = SORTING_POINTER_TABLE[j];
@@ -193,7 +192,6 @@ public class CalculateAverage_Szum123321 {
 
                 for (int ch = 0; ch < 256; ch++) {
                     // Copy elements back to the sorting array
-                    // System.arraycopy(SORTING_SORT_ACC_TABLE, STRING_BLOCK_COUNT * ch, SORTING_POINTER_TABLE, k, STRING_SORT_COUNT_ARRAY[ch]);
                     unsafe.copyMemory(SORTING_SORT_ACC_TABLE,
                             Unsafe.ARRAY_LONG_BASE_OFFSET + STRING_BLOCK_COUNT * ch * 8L,
                             SORTING_POINTER_TABLE,
@@ -215,12 +213,6 @@ public class CalculateAverage_Szum123321 {
                 int sum = unsafe.getInt(pos + HASH_TABLE_SUM_OFFSET);
                 int min = unsafe.getInt(pos + HASH_TABLE_MIN_OFFSET);
                 int max = unsafe.getInt(pos + HASH_TABLE_MAX_OFFSET);
-                /*
-                 * int count = HASH_TABLE.get(ValueLayout.JAVA_INT, SORTING_POINTER_TABLE[i] + HASH_TABLE_COUNT_OFFSET);
-                 * int sum = HASH_TABLE.get(ValueLayout.JAVA_INT, SORTING_POINTER_TABLE[i] + HASH_TABLE_SUM_OFFSET);
-                 * int min = HASH_TABLE.get(ValueLayout.JAVA_INT, SORTING_POINTER_TABLE[i] + HASH_TABLE_MIN_OFFSET);
-                 * int max = HASH_TABLE.get(ValueLayout.JAVA_INT, SORTING_POINTER_TABLE[i] + HASH_TABLE_MAX_OFFSET);
-                 */
 
                 System.out.write(STATIC_STRING_STORAGE_BACKING, (int) key, (int) get_c_str_length(STATIC_STRING_STORAGE.asSlice(key)));
 
@@ -262,11 +254,11 @@ public class CalculateAverage_Szum123321 {
 
                 colon_comp_pos = vec.compare(VectorOperators.EQ, (byte) ';').firstTrue();
 
-                // var hash_mask = ByteVector.SPECIES_128.loadMask(MASK_CACHE[colon_comp_pos], 0);
                 var hash_mask = (VectorMask<Byte>) HASH_MASK_CACHE[colon_comp_pos];
 
                 hash_state = hash_state.lanewise(VectorOperators.XOR, vec.blend(0, hash_mask).reinterpretAsInts());
                 hash_state = hash_round(hash_state);
+
                 colon_offset += colon_comp_pos;
             } while (colon_comp_pos == 16);
 
@@ -330,10 +322,8 @@ public class CalculateAverage_Szum123321 {
             int lock, available_access_counter;
 
             // Busy wait while the hash table is being updated
-            //while ((available_access_counter = lock = HASH_LOCK.get(hash)) < 0) ;
             available_access_counter = Math.abs(lock = HASH_LOCK.get(hash));
             // Get the key_pointer at hash_entry_ptr
-            // long name_pointer = HASH_TABLE.get(ValueLayout.JAVA_LONG, hash_entry_ptr);
             long name_pointer = unsafe.getLong(hash_entry_ptr);
 
             // Advance as long as there are new entries left and the string pointed to by name_pointer is different to raw_string
@@ -342,7 +332,6 @@ public class CalculateAverage_Szum123321 {
              //simd_string_compare(raw_string.asSlice(0, key_length), STATIC_STRING_STORAGE.asSlice(name_pointer)) != 0) {
                     !compare_key_with_string_stack(raw_string, key_length, name_pointer)) {
                 hash_entry_ptr += HASH_TABLE_ENTRY_LENGTH;
-                // name_pointer = HASH_TABLE.get(ValueLayout.JAVA_LONG, hash_entry_ptr);
                 name_pointer = unsafe.getLong(hash_entry_ptr);
             }
 
@@ -357,7 +346,6 @@ public class CalculateAverage_Szum123321 {
                     // Push the new string to the key name area
                     long new_string_ptr = push_new_string(raw_string.asSlice(0, key_length));
                     // Store the pointer in the array
-                    // HASH_TABLE.set(ValueLayout.JAVA_LONG, hash_entry_ptr, new_string_ptr);
                     unsafe.putLong(hash_entry_ptr, new_string_ptr);
                     // Unlock the table and increment the lock counter
                     HASH_LOCK.set(hash, lock + 1);
