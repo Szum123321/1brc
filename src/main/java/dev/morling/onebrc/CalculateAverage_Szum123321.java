@@ -296,7 +296,7 @@ public class CalculateAverage_Szum123321 {
             value *= sign;
 
             // The memory address of the hash table subcell
-            long table_entry = get_hash_table_entry((int) hash, segment.asSlice(i), (int) colon_offset);
+            long table_entry = get_hash_table_entry((int) hash, segment.asSlice(i, colon_offset));
 
             unsafe.getAndAddInt(null, table_entry + HASH_TABLE_SUM_OFFSET, value);
             unsafe.getAndAddInt(null, table_entry + HASH_TABLE_COUNT_OFFSET, 1);
@@ -309,7 +309,7 @@ public class CalculateAverage_Szum123321 {
 
     private final static AtomicInteger COLLISION_COUNTER = new AtomicInteger(0);
 
-    private static long get_hash_table_entry(final int hash, final MemorySegment raw_string, int key_length) {
+    private static long get_hash_table_entry(final int hash, final MemorySegment raw_string) {
         // Pointer to the first entry matching this hash
         // final long hash_table_base_offset = /*HASH_TABLE.address() +*/ hash * HASH_TABLE_ENTRY_LENGTH * HASH_TABLE_SUB_ENTRY_COUNT;
         final long hash_table_base_offset = HASH_TABLE.address() + hash * HASH_TABLE_ENTRY_LENGTH * HASH_TABLE_SUB_ENTRY_COUNT;
@@ -328,9 +328,7 @@ public class CalculateAverage_Szum123321 {
 
             // Advance as long as there are new entries left and the string pointed to by name_pointer is different to raw_string
             while (--available_access_counter > 0 &&
-            // simd_string_compare(raw_string, key_length, STATIC_STRING_STORAGE.asSlice(name_pointer)) != 0) {
-             //simd_string_compare(raw_string.asSlice(0, key_length), STATIC_STRING_STORAGE.asSlice(name_pointer)) != 0) {
-                    !compare_key_with_string_stack(raw_string, key_length, name_pointer)) {
+                    !compare_key_with_string_stack_pure_unsafe(raw_string, name_pointer)) {
                 hash_entry_ptr += HASH_TABLE_ENTRY_LENGTH;
                 name_pointer = unsafe.getLong(hash_entry_ptr);
             }
@@ -344,7 +342,7 @@ public class CalculateAverage_Szum123321 {
                 if (HASH_LOCK.compareAndSet(hash, lock, -lock)) {
                     // We've successfully locked the table
                     // Push the new string to the key name area
-                    long new_string_ptr = push_new_string(raw_string.asSlice(0, key_length));
+                    long new_string_ptr = push_new_string(raw_string);
                     // Store the pointer in the array
                     unsafe.putLong(hash_entry_ptr, new_string_ptr);
                     // Unlock the table and increment the lock counter
@@ -356,69 +354,22 @@ public class CalculateAverage_Szum123321 {
         }
     }
 
-    private static boolean compare_key_with_string_stack(final MemorySegment key, final long key_length, final long region_position) {
-        final var SPECIES = ByteVector.SPECIES_PREFERRED;
-        long i = 0;
-
-        for (; i < SPECIES.loopBound(key_length); i += SPECIES.length()) {
-            var x = ByteVector.fromMemorySegment(SPECIES, key, i, ByteOrder.LITTLE_ENDIAN);
-            var y = ByteVector.fromMemorySegment(SPECIES, STATIC_STRING_STORAGE, region_position + i, ByteOrder.LITTLE_ENDIAN);
-            if (!x.compare(VectorOperators.EQ, y).allTrue())
-                return false;
+    /**
+     * This function compares the provided memory segment with data in STATIC_STRING_STORAGE_BACKING at region_position.
+     * WARNING: Make sure there are AT LEAST 8 bytes AFTER the LAST key byte as the function might try to access them!
+     * @param key memory segment containing the key
+     * @param region_position
+     * @return true if the key matches bytes at region_position
+     */
+    private static boolean compare_key_with_string_stack_pure_unsafe(final MemorySegment key, final long region_position) {
+        for(long i = 0; i < key.byteSize(); i += 8) {
+            long x = unsafe.getLong(key.address() + i);
+            long y = unsafe.getLong(STATIC_STRING_STORAGE_BACKING, Unsafe.ARRAY_BYTE_BASE_OFFSET + region_position + i);
+            long z = x^y;
+            if(z != 0 && (i + Long.numberOfTrailingZeros(z)/8 < key.byteSize())) return false;
         }
-
-        for (; i < key_length; i++)
-            if (unsafe.getByte(key.address() + i) != unsafe.getByte(STATIC_STRING_STORAGE_BACKING, Unsafe.ARRAY_BYTE_BASE_OFFSET + region_position + i))
-                return false;
-
         return true;
     }
-
-    /**
-     * Checks if the bytes of key match region exactly
-     * @param key first memory segment to compare
-     * @param region region of the memory to test
-     * @return the position of the mismatch + 1 or 0 on success
-     */
-    private static long simd_string_compare(MemorySegment key, MemorySegment region) {
-        assert key.byteSize() <= region.byteSize();
-
-        final var SPECIES = ByteVector.SPECIES_PREFERRED;
-        long i = 0;
-
-        for (; i < key.byteSize(); i += SPECIES.length()) {
-            var mask = SPECIES.indexInRange(i, key.byteSize());
-            var x = ByteVector.fromMemorySegment(SPECIES, key, i, ByteOrder.LITTLE_ENDIAN, mask);
-            var y = ByteVector.fromMemorySegment(SPECIES, region, i, ByteOrder.LITTLE_ENDIAN, mask);
-            var comp_result = x.compare(VectorOperators.EQ, y);
-
-            if (!comp_result.allTrue())
-                return i + comp_result.not().firstTrue() + 1;
-        }
-
-        return 0;
-    }
-
-    /*
-     * private static long simd_string_compare(MemorySegment key, int key_length, MemorySegment region) {
-     * assert key_length <= region.byteSize();
-     * 
-     * final var SPECIES = ByteVector.SPECIES_PREFERRED;
-     * long i = 0;
-     * 
-     * for (; i < key_length; i += SPECIES.length()) {
-     * var mask = SPECIES.indexInRange(i, key_length);
-     * var x = ByteVector.fromMemorySegment(SPECIES, key, i, ByteOrder.LITTLE_ENDIAN, mask);
-     * var y = ByteVector.fromMemorySegment(SPECIES, region, i, ByteOrder.LITTLE_ENDIAN, mask);
-     * var comp_result = x.compare(VectorOperators.EQ, y);
-     * 
-     * if (!comp_result.allTrue())
-     * return i + comp_result.not().firstTrue() + 1;
-     * }
-     * 
-     * return 0;
-     * }
-     */
 
     private static long push_new_string(MemorySegment source_segment) {
         long dest_offset = STATIC_STRING_OFFSET.getAndAdd(STRING_BLOCK_SIZE);
