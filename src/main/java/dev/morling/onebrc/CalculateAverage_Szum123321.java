@@ -311,7 +311,7 @@ public class CalculateAverage_Szum123321 {
 
     private final static AtomicInteger COLLISION_COUNTER = new AtomicInteger(0);
 
-    private static long get_hash_table_entry(final int hash, final MemorySegment raw_string) {
+    private static long get_hash_table_entry(final int hash, final MemorySegment key) {
         // Pointer to the first entry matching this hash
         // final long hash_table_base_offset = /*HASH_TABLE.address() +*/ hash * HASH_TABLE_ENTRY_LENGTH * HASH_TABLE_SUB_ENTRY_COUNT;
         final long hash_table_base_offset = HASH_TABLE.address() + hash * HASH_TABLE_ENTRY_LENGTH * HASH_TABLE_SUB_ENTRY_COUNT;
@@ -330,7 +330,7 @@ public class CalculateAverage_Szum123321 {
 
             // Advance as long as there are new entries left and the string pointed to by name_pointer is different to raw_string
             while (--available_access_counter > 0 &&
-                    !compare_key_with_string_stack_pure_unsafe(raw_string, name_pointer)) {
+                    !compare_key_with_string_stack_pure_unsafe(key, name_pointer)) {
                 hash_entry_ptr += HASH_TABLE_ENTRY_LENGTH;
                 name_pointer = unsafe.getLong(hash_entry_ptr);
             }
@@ -344,7 +344,7 @@ public class CalculateAverage_Szum123321 {
                 if (HASH_LOCK.compareAndSet(hash, lock, -lock)) {
                     // We've successfully locked the table
                     // Push the new string to the key name area
-                    long new_string_ptr = push_new_string(raw_string);
+                    long new_string_ptr = push_new_string(key);
                     // Store the pointer in the array
                     unsafe.putLong(hash_entry_ptr, new_string_ptr);
                     // Unlock the table and increment the lock counter
