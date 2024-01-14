@@ -128,7 +128,7 @@ public class CalculateAverage_Szum123321 {
     private static final long HASH_TABLE_ADDRESS = HASH_TABLE.address();
 
     private static final long[] SORTING_POINTER_TABLE = new long[STRING_BLOCK_COUNT];
-    private static final long[] SORTING_SORT_ACC_TABLE = new long[STRING_BLOCK_COUNT * 256];
+    private static final long[] STRING_SORT_BUCKETS = new long[STRING_BLOCK_COUNT * 256];
     private static final short[] STRING_SORT_COUNT_ARRAY = new short[STRING_BLOCK_COUNT];
 
     private static String segment_to_string(MemorySegment segment) {
@@ -178,6 +178,7 @@ public class CalculateAverage_Szum123321 {
             for (int i = STRING_BLOCK_SIZE - 1; i >= 0; i--) {
                 Arrays.fill(STRING_SORT_COUNT_ARRAY, (short) 0); // Reset the count
 
+                //Segregate values into the right buckets
                 for (int j = 0; j < cnt; j++) {
                     // Get the pointer to the string
                     long string_ptr = unsafe.getLong(HASH_TABLE.address() + SORTING_POINTER_TABLE[j]);
@@ -185,14 +186,15 @@ public class CalculateAverage_Szum123321 {
 
                     int bt = Byte.toUnsignedInt(unsafe.getByte(STATIC_STRING_STORAGE_BACKING, Unsafe.ARRAY_BYTE_BASE_OFFSET + string_ptr + i));
                     // Push the hash table entry pointer to the accumulation array
-                    SORTING_SORT_ACC_TABLE[STRING_BLOCK_COUNT * bt + STRING_SORT_COUNT_ARRAY[bt]++] = SORTING_POINTER_TABLE[j];
+                    STRING_SORT_BUCKETS[STRING_BLOCK_COUNT * bt + STRING_SORT_COUNT_ARRAY[bt]++] = SORTING_POINTER_TABLE[j];
                 }
 
                 int k = 0;
 
+                //Collect the buckets back into the main array
                 for (int ch = 0; ch < 256; ch++) {
                     // Copy elements back to the sorting array
-                    unsafe.copyMemory(SORTING_SORT_ACC_TABLE,
+                    unsafe.copyMemory(STRING_SORT_BUCKETS,
                             Unsafe.ARRAY_LONG_BASE_OFFSET + STRING_BLOCK_COUNT * ch * 8L,
                             SORTING_POINTER_TABLE,
                             Unsafe.ARRAY_LONG_BASE_OFFSET + k * 8L,
