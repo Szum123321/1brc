@@ -359,13 +359,15 @@ public class CalculateAverage_Szum123321 {
     /**
      * This function compares the provided memory segment with data in STATIC_STRING_STORAGE_BACKING at region_position.
      * WARNING: Make sure there are AT LEAST 8 bytes AFTER the LAST key byte as the function might try to access them!
+     * Yes, it's actually faster than simd. unsafe memory access is somewhat faster than SIMD, also allTrue/anyTrue/mask operations are especially slow
      * @param key memory segment containing the key
-     * @param region_position
+     * @param region_position - address of the first byte in STATIC_STRING_STORAGE against which key will be compared
      * @return true if the key matches bytes at region_position
      */
     private static boolean compare_key_with_string_stack_pure_unsafe(final MemorySegment key, final long region_position) {
-        for(long i = 0; i < key.byteSize(); i += 8) {
-            long x = unsafe.getLong(key.address() + i);
+        final long key_address = key.address(), key_length = key.byteSize();
+        for (int i = 0; i < key_length; i += 8) {
+            long x = unsafe.getLong(key_address + i);
             long y = unsafe.getLong(STATIC_STRING_STORAGE_BACKING, Unsafe.ARRAY_BYTE_BASE_OFFSET + region_position + i);
             long z = x^y;
             if(z != 0 && (i + Long.numberOfTrailingZeros(z)/8 < key.byteSize())) return false;

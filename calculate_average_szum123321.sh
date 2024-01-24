@@ -16,8 +16,8 @@
 #
 
 
-#JAVA_OPTS=" -XX:+UnlockDiagnosticVMOptions -Djdk.incubator.vector.VECTOR_ACCESS_OOB_CHECK=0 -XX:InlineSmallCode=10000 -XX:FreqInlineSize=10000 -XX:PrintAssemblyOptions=intel -XX:+UnlockExperimentalVMOptions -XX:+TrustFinalNonStaticFields -XX:+UseTransparentHugePages -verbose:gc --enable-preview -Xms2g -Xmx2g --add-modules=jdk.incubator.vector --add-opens java.base/jdk.internal.foreign=ALL-UNNAMED --add-exports java.base/jdk.internal.foreign=ALL-UNNAMED --enable-native-access=ALL-UNNAMED"
+JAVA_OPTS="--enable-preview -Xms2g -Xmx2g --add-modules=jdk.incubator.vector --add-opens java.base/jdk.internal.foreign=ALL-UNNAMED --add-exports java.base/jdk.internal.foreign=ALL-UNNAMED --enable-native-access=ALL-UNNAMED"
 #JAVA_OPTS="--enable-preview -Xms2g -Xmx2g --add-modules=jdk.incubator.vector --add-opens java.base/jdk.internal.foreign=ALL-UNNAMED --add-exports java.base/jdk.internal.foreign=ALL-UNNAMED --enable-native-access=ALL-UNNAMED"
-JAVA_OPTS="-Djdk.incubator.vector.VECTOR_ACCESS_OOB_CHECK=0 -XX:InlineSmallCode=10000 -XX:FreqInlineSize=10000 -XX:+UnlockExperimentalVMOptions -XX:+TrustFinalNonStaticFields -XX:+UseTransparentHugePages -verbose:gc --enable-preview -Xms4g -Xmx4g --add-modules=jdk.incubator.vector --add-opens java.base/jdk.internal.foreign=ALL-UNNAMED --add-exports java.base/jdk.internal.foreign=ALL-UNNAMED --enable-native-access=ALL-UNNAMED"
+#JAVA_OPTS="-Djdk.incubator.vector.VECTOR_ACCESS_OOB_CHECK=0 -XX:InlineSmallCode=10000 -XX:FreqInlineSize=10000 -XX:+UnlockExperimentalVMOptions -XX:+TrustFinalNonStaticFields -XX:+UseTransparentHugePages -verbose:gc --enable-preview -Xms4g -Xmx4g --add-modules=jdk.incubator.vector --add-opens java.base/jdk.internal.foreign=ALL-UNNAMED --add-exports java.base/jdk.internal.foreign=ALL-UNNAMED --enable-native-access=ALL-UNNAMED"
 
 time java $JAVA_OPTS --class-path target/average-1.0.0-SNAPSHOT.jar dev.morling.onebrc.CalculateAverage_Szum123321
