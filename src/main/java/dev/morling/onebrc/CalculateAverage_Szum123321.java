@@ -29,9 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.stream.IntStream;
@@ -41,7 +39,6 @@ public class CalculateAverage_Szum123321 {
 
     // Primarly needed for the atomic operations, might use for faster memory access instead of the
     private static final Unsafe unsafe = getUnsafe();
-    private static final boolean[][] MASK_CACHE;
     private static final VectorMask[] HASH_MASK_CACHE;
 
     private final static int STRING_BLOCK_SIZE = 102;
@@ -155,7 +152,7 @@ public class CalculateAverage_Szum123321 {
 
         try (var channel = FileChannel.open(Path.of(FILE), StandardOpenOption.READ)) {
             long fileSize = channel.size();
-            // Add 512 padding bytes to allow out of bounds reads with Vectors
+            // Add 1024 padding bytes to allow out of bounds reads with Vectors
             var mapping = channel.map(FileChannel.MapMode.READ_ONLY, 0, fileSize, Arena.global()).reinterpret(fileSize + 1024);
 
             System.err.println("File ready");
@@ -262,7 +259,8 @@ public class CalculateAverage_Szum123321 {
 
             // VectorMask<Byte> colon_comp_res;
             int colon_comp_pos;
-            var hash_state = IntVector.SPECIES_128.fromArray(HASH_IV, 0);
+
+            var hash_state = IntVector.fromArray(IntVector.SPECIES_128, HASH_IV, 0);
 
             do {
                 var load_mask = ByteVector.SPECIES_128.indexInRange(i + colon_offset, end);
