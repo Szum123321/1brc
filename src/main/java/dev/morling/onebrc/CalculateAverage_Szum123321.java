@@ -143,8 +143,6 @@ public class CalculateAverage_Szum123321 {
             // Add 512 padding bytes to allow out of bounds reads with Vectors
             var mapping = channel.map(FileChannel.MapMode.READ_ONLY, 0, fileSize, Arena.global()).reinterpret(fileSize + 1024);
 
-            INPUT_FILE_MAPPING_BASE_ADDRESS = mapping.address();
-
             System.err.println("File ready");
 
             // Prepare segments
@@ -176,7 +174,8 @@ public class CalculateAverage_Szum123321 {
             // Radix sort
             // Iterate over all string positions from the least significant
             for (int i = STRING_BLOCK_SIZE - 1; i >= 0; i--) {
-                Arrays.fill(STRING_SORT_COUNT_ARRAY, (short) 0); // Reset the count
+                //Arrays.fill(STRING_SORT_COUNT_ARRAY, (short) 0); // Reset the count
+                unsafe.setMemory(STRING_SORT_COUNT_ARRAY, Unsafe.ARRAY_BYTE_BASE_OFFSET, STRING_SORT_COUNT_ARRAY.length, (byte)0);
 
                 //Segregate values into the right buckets
                 for (int j = 0; j < cnt; j++) {
@@ -409,8 +408,15 @@ public class CalculateAverage_Szum123321 {
         } while (!unsafe.compareAndSwapInt(null, address, old, x));
     }
 
-    private static Vector<Integer> hash_round(Vector<Integer> vec) {
-        return vec.lanewise(VectorOperators.XOR, vec.lanewise(VectorOperators.ROL, HASH_ROT_CONST)).mul(HASH_MULTIPLY_VECT);
+    private static IntVector hash_round(final IntVector vec) {
+        return vec.lanewise(VectorOperators.XOR, vec.lanewise(VectorOperators.ROL, 13));
+        //return vec.lanewise(VectorOperators.ROL, 13).mul(HASH_MULTIPLY_VECT);
+        //vec = vec.lanewise(VectorOperators.XOR, vec.lanewise(VectorOperators.ROL, 13));
+        //Not really needed
+        //vec = vec.lanewise(VectorOperators.XOR, vec.lanewise(VectorOperators.ROR, 15));
+        //vec = vec.lanewise(VectorOperators.XOR, vec.lanewise(VectorOperators.ROL, 5));
+        //vec = vec.lanewise(VectorOperators.MUL, HASH_MULTIPLY_VECT);
+        //return vec;
     }
 
     private static Unsafe getUnsafe() {
@@ -435,18 +441,7 @@ public class CalculateAverage_Szum123321 {
                 a[j] = false;
             for (; j < 17; j++)
                 a[j] = true;
-            HASH_MASK_CACHE[i] = ByteVector.SPECIES_128.loadMask(a, 0);
-        }
-
-        MASK_CACHE = new boolean[17][];
-        for (int i = 0; i < 17; i++) {
-            MASK_CACHE[i] = new boolean[17];
-            int j = 0;
-
-            for (; j < i; j++)
-                MASK_CACHE[i][j] = false;
-            for (; j < 17; j++)
-                MASK_CACHE[i][j] = true;
+            HASH_MASK_CACHE[i] = VectorMask.fromArray(ByteVector.SPECIES_128, a, 0);
         }
 
         int[] array = new int[(int) HASH_TABLE_ENTRY_COUNT];
