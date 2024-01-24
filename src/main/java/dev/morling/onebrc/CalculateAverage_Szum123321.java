@@ -124,12 +124,25 @@ public class CalculateAverage_Szum123321 {
     private static final long HASH_TABLE_COUNT_OFFSET = 20;
 
     private static final AtomicIntegerArray HASH_LOCK;
+
+    private static final int[] _HASH_LOCK = new int[(int) HASH_TABLE_ENTRY_COUNT];
     private static final MemorySegment HASH_TABLE = Arena.global().allocate(HASH_TABLE_SIZE);
     private static final long HASH_TABLE_ADDRESS = HASH_TABLE.address();
 
     private static final long[] SORTING_POINTER_TABLE = new long[STRING_BLOCK_COUNT];
     private static final long[] STRING_SORT_BUCKETS = new long[STRING_BLOCK_COUNT * 256];
     private static final short[] STRING_SORT_COUNT_ARRAY = new short[STRING_BLOCK_COUNT];
+
+    private static int get_lock_value(int address) {
+        return unsafe.getInt(_HASH_LOCK,Unsafe.ARRAY_INT_BASE_OFFSET + (long) Integer.BYTES * address);
+    }
+    private static boolean lock(int address, int lock_value) {
+        return unsafe.compareAndSwapInt(_HASH_LOCK, Unsafe.ARRAY_INT_BASE_OFFSET + (long) Integer.BYTES * address, lock_value, -lock_value);
+    }
+
+    private static void unlock(int address, int new_lock_value) {
+        unsafe.putInt(_HASH_LOCK, Unsafe.ARRAY_INT_BASE_OFFSET+ (long) Integer.BYTES * address, new_lock_value);
+    }
 
     private static String segment_to_string(MemorySegment segment) {
         return new String(segment.toArray(ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
@@ -138,6 +151,8 @@ public class CalculateAverage_Szum123321 {
     private static HashSet<String> DEBUG_SET = new HashSet<>(10000);
 
     public static void main(String[] args) throws IOException, RuntimeException {
+        for(int i = 0; i < HASH_TABLE_ENTRY_COUNT; i++) _HASH_LOCK[i] = 1;
+
         try (var channel = FileChannel.open(Path.of(FILE), StandardOpenOption.READ)) {
             long fileSize = channel.size();
             // Add 512 padding bytes to allow out of bounds reads with Vectors
@@ -312,46 +327,27 @@ public class CalculateAverage_Szum123321 {
 
     private static long get_hash_table_entry(final int hash, final MemorySegment key) {
         // Pointer to the first entry matching this hash
-        // final long hash_table_base_offset = /*HASH_TABLE.address() +*/ hash * HASH_TABLE_ENTRY_LENGTH * HASH_TABLE_SUB_ENTRY_COUNT;
-        final long hash_table_base_offset = HASH_TABLE.address() + hash * HASH_TABLE_ENTRY_LENGTH * HASH_TABLE_SUB_ENTRY_COUNT;
+        final long hash_table_base_offset = HASH_TABLE_MEM_ADDRESS + hash * HASH_TABLE_ENTRY_LENGTH * HASH_TABLE_SUB_ENTRY_COUNT;
 
-        while (true) {
-            // Reset the counters
-            long hash_entry_ptr = hash_table_base_offset;
+        //Position at which the last iteration finished, so we don't keep on rechecking the same entry
+        int continuation_offset = 0;
 
-            // Lock and available_access_counter store the number of valid entries + 1, or are negative if the table is being modified right now.
-            int lock, available_access_counter;
+        while(true) {
+            final int lock = get_lock_value(hash), current_available_entry_count = Math.abs(lock) - 1;
+            int i = continuation_offset;
 
-            // Busy wait while the hash table is being updated
-            available_access_counter = Math.abs(lock = HASH_LOCK.get(hash));
-            // Get the key_pointer at hash_entry_ptr
-            long name_pointer = unsafe.getLong(hash_entry_ptr);
+            while(i < current_available_entry_count && !compare_key_with_string_stack_pure_unsafe(key, unsafe.getLong(hash_table_base_offset + HASH_TABLE_ENTRY_LENGTH * i))) i++;
 
-            // Advance as long as there are new entries left and the string pointed to by name_pointer is different to raw_string
-            while (--available_access_counter > 0 &&
-                    !compare_key_with_string_stack_pure_unsafe(key, name_pointer)) {
-                hash_entry_ptr += HASH_TABLE_ENTRY_LENGTH;
-                name_pointer = unsafe.getLong(hash_entry_ptr);
+            if(i < current_available_entry_count) {
+                return hash_table_base_offset + HASH_TABLE_ENTRY_LENGTH * i;
+            } else if (lock > 0 && lock(hash, lock)) {
+                long new_string_ptr = push_new_string(key);
+                unsafe.putLong(hash_table_base_offset + HASH_TABLE_ENTRY_LENGTH * i, new_string_ptr);
+                unlock(hash, lock + 1);
+                return hash_table_base_offset + HASH_TABLE_ENTRY_LENGTH * i;
             }
-
-            if (available_access_counter != 0 /* && name_pointer != 0 */) {
-                // The entry is valid and matches
-                return hash_entry_ptr;
-            }
-            else if(lock > 0) {
-                // Try to claim this table supercell by negating the lock. if the lock value has changed in the meantime, restart the procedure
-                if (HASH_LOCK.compareAndSet(hash, lock, -lock)) {
-                    // We've successfully locked the table
-                    // Push the new string to the key name area
-                    long new_string_ptr = push_new_string(key);
-                    // Store the pointer in the array
-                    unsafe.putLong(hash_entry_ptr, new_string_ptr);
-                    // Unlock the table and increment the lock counter
-                    HASH_LOCK.set(hash, lock + 1);
-
-                    return hash_entry_ptr;
-                }
-            }
+            continuation_offset = i;
+            COLLISION_COUNTER.incrementAndGet();
         }
     }
 
